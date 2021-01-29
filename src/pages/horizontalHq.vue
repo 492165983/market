@@ -225,7 +225,8 @@ DefaultData.GetKlineOption = function (symbol) {
       MaxReqeustDataCount: 1000, //日线数据最近1000天
       MaxRequestMinuteDayCount: 15,    //分钟数据最近15天
       PageSize: 50, //一屏显示多少数据
-      IsShowTooltip: false //是否显示K线提示信息
+      IsShowTooltip: false, //是否显示K线提示信息
+      DrawType: 3 // 涨空心柱子
     },
 
     KLineTitle: //标题设置
@@ -501,6 +502,7 @@ export default {
       // 以下主要是设置背景颜色
       var blackStyle = JSCommon.HQChartStyle.GetStyleConfig(JSCommon.STYLE_TYPE_ID.BLACK_ID);
       blackStyle.FrameTitleBGColor = "#F7F7F7";
+      blackStyle.UnchagneBarColor = "#DC143C";
       JSCommon.JSChart.SetStyle(blackStyle);
       this.$refs.minute.style.backgroundColor = '#ffffff';
       // 以下是设置 自己的数据域名
@@ -582,7 +584,7 @@ export default {
           dataType: 'json',
           data: JSON.stringify(paramsSell),
           contentType: 'application/json;charset=utf-8',
-          async: false,
+          async: true,
           success: function (recvData) {
             console.log(recvData);
             $.each(recvData.data.records, function (index, myobj) {
@@ -694,7 +696,7 @@ export default {
         type: 'post',
         url: 'http://szzx.api51.cn/szzx/trend/?prod_code=' + myProdCode.prodCode,
         dataType: 'json',
-        async: false,
+        async: true,
         success: function (recvData) {
           self.RecvMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
         }
@@ -723,7 +725,7 @@ export default {
         dataType: 'json',
         data: JSON.stringify(params),
         contentType: 'application/json;charset=utf-8',
-        async: false,
+        async: true,
         success: function (recvData) {
           self.RecvHistoryData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option)
         },
@@ -747,7 +749,7 @@ export default {
           myProdCode.prodCode +
           '&period_type=60&tick_count=1000',
         dataType: 'json',
-        async: false,
+        async: true,
         success: function (recvData) {
           self.RecvMinuteRealtimeData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
         },
@@ -764,14 +766,18 @@ export default {
       var self = this;
       var symbol = data.Request.Data.symbol; //股票代码
       var name = data.Name;
+      var params = {
+        periodType: 60,
+        prodCode: myProdCode.prodCode,
+        tickCount: 1000
+      }
       $.ajax({
-        type: 'GET',
-        url:
-          'http://szzx.api51.cn/szzx/kline/?prod_code=' +
-          myProdCode.prodCode +
-          '&period_type=60&tick_count=10000',
+        type: 'POST',
+        url: '/api' + '/quotationService/quotation/getOneMinuteKLineHistory',
         dataType: 'json',
-        async: false,
+        data: JSON.stringify(params),
+        contentType: 'application/json;charset=utf-8',
+        async: true,
         success: function (recvData) {
           self.RecvHistoryMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
         },
@@ -924,12 +930,14 @@ export default {
     // 1分钟周期  历史数据 转换为  hqchart  数据格式
     JsonToHQChartHistoryMinuteData (recvData) {
       var klineData = [];
-      console.log(recvData);
-      var obj = recvData.data.candle;
+      // console.log(recvData);
+      // var obj = recvData.data.candle;
+      var data = JSON.parse(recvData.data)
+      var obj = data.data.candle;
       for (var key in obj) {
         var lines = obj[key].lines
         $.each(lines, function (index, myobj) {
-          var time = new Date(myobj[0] * 1000);
+          var time = new Date(myobj[8] * 1000);
           var mydate =
             time.getFullYear() +
             '' +
@@ -952,12 +960,12 @@ export default {
           klineData.push([
             parseFloat(mydate), // 日期
             0,
-            parseFloat(myobj[1]), //开
-            parseFloat(myobj[3]), //高
-            parseFloat(myobj[4]), //低
-            parseFloat(myobj[2]), //收
-            parseFloat(myobj[5]), // 这里显示的是 量
-            parseFloat(myobj[6]), // 这里显示的是 额
+            parseFloat(myobj[0]), //开
+            parseFloat(myobj[2]), //高
+            parseFloat(myobj[3]), //低
+            parseFloat(myobj[1]), //收
+            parseFloat(myobj[6]), // 这里显示的是 量
+            parseFloat(myobj[7]), // 这里显示的是 额
             parseInt(mytime), //时间
             '',
           ]);

@@ -252,6 +252,10 @@ DefaultData.GetMinuteOption = function (symbol) {
 DefaultData.GetKlineOption = function (symbol) {
   let data = {
     Type: '历史K线图',
+    // Page:
+    // {
+    //   Minute: { Enable: true } //开启1分钟K线分页下载
+    // },
     Windows: [
       { Index: "均线", Modify: false, Change: false, API: { Name: '买卖点指标', Script: null, Args: null, Url: 'http://127.0.0.1:18080/api/jsindex' } },
       { Index: "VOL", Modify: false, Change: false, IsDrawTitleBG: false, },
@@ -270,7 +274,8 @@ DefaultData.GetKlineOption = function (symbol) {
       MaxReqeustDataCount: 1000, //日线数据最近1000天
       MaxRequestMinuteDayCount: 15,    //分钟数据最近15天
       PageSize: 50, //一屏显示多少数据
-      IsShowTooltip: false //是否显示K线提示信息
+      IsShowTooltip: false, //是否显示K线提示信息
+      DrawType: 3 // 涨空心柱子
     },
 
     KLineTitle: //标题设置
@@ -575,6 +580,7 @@ export default {
       // 以下主要是设置背景颜色
       var blackStyle = JSCommon.HQChartStyle.GetStyleConfig(JSCommon.STYLE_TYPE_ID.BLACK_ID);
       blackStyle.FrameTitleBGColor = "#F7F7F7";
+      blackStyle.UnchagneBarColor = "#DC143C"; //平盘文字
       JSCommon.JSChart.SetStyle(blackStyle);
       this.$refs.minute.style.backgroundColor = '#ffffff';
       // 以上主要是设置背景颜色
@@ -657,7 +663,7 @@ export default {
           dataType: 'json',
           data: JSON.stringify(paramsSell),
           contentType: 'application/json;charset=utf-8',
-          async: false,
+          async: true,
           success: function (recvData) {
             // console.log(recvData);
             $.each(recvData.data.records, function (index, myobj) {
@@ -739,6 +745,7 @@ export default {
       // 卖
       var Sell = [];
 
+
       // 昨日收盘价
       var preclose_px = []
       // var myPrice = [];
@@ -755,7 +762,6 @@ export default {
         dataType: "json",
         async: true,
         success: (recvData) => {
-          // console.log(recvData);
           this.preclose_px = recvData.data.preclose_px;
           // myPrice.push(recvData.data.preclose_px);
           prodCode.push(recvData.data.prod_code);
@@ -765,32 +771,77 @@ export default {
           let buy = recvData.data.bid_grp;
           var arr = buy.split(',');
           var list = arr.map((item) => {
-            return (item * 1).toFixed(1);
+            return (item * 1).toFixed(2);
           });
           for (var i = 0; i < list.length; i++) {
             if ((i + 1) % 3 === 0) {
+              //  价格
+              let s = parseFloat(list.slice(i - 2, i + 1)[0]).toString();
+              //  价格有无
+              if (s == '0') {
+                s = '--'
+              } else {
+                let SS = s.split('.');
+                // console.log(SS[1]);
+                if (SS[1] == undefined) {
+                  s += '.00'
+                } else if (SS[1].length == 1) {
+                  s = s + '0'
+                }
+              }
+
+              // 数量
+              let numBuy = parseFloat(list.slice(i - 2, i + 1)[1]).toString();
+              // 数量有无判断
+              if (numBuy == 0) {
+                numBuy = '' + '--';
+              } else {
+                numBuy = numBuy;
+              }
               Buy.push({
-                price: parseFloat(list.slice(i - 2, i + 1)[0]),
-                vol: parseInt(
-                  parseFloat(list.slice(i - 2, i + 1)[1]) / 100
-                ),
+                price: s,
+                // vol: parseInt(parseFloat(list.slice(i - 2, i + 1)[1]) / 100
+                vol: numBuy,
               });
             }
           };
+
           this.Buy = Buy;
+
           // 五档数据 卖
           let sell = recvData.data.offer_grp;
           var arr1 = sell.split(',');
           var list1 = arr1.map((item) => {
-            return (item * 1).toFixed(1);
+            return (item * 1).toFixed(2);
           });
           for (let j = 0; j < list1.length; j++) {
             if ((j + 1) % 3 === 0) {
+              // 价格
+              let ss1 = parseFloat(list1.slice(j - 2, j + 1)[0]).toString();
+              // 价格有无判断
+              if (ss1 == '0') {
+                ss1 = '--';
+              } else {
+                let SS1 = ss1.split('.');
+                if (SS1[1] == undefined) {
+                  ss1 += '.00';
+                } else if (SS1[1].length == 1) {
+                  ss1 = ss1 + '0'
+                }
+              }
+
+              // 数量
+              let num = parseFloat(list1.slice(j - 2, j + 1)[1]).toString();
+              // 数量有无判断
+              if (num == 0) {
+                num = '' + '--';
+              } else {
+                num = num;
+              }
               Sell.push({
-                price: parseFloat(list1.slice(j - 2, j + 1)[0]),
-                vol: parseInt(
-                  parseFloat(list1.slice(j - 2, j + 1)[1]) / 100
-                ),
+                price: ss1,
+                // vol: parseInt(parseFloat(list1.slice(j - 2, j + 1)[1]) / 100),
+                vol: num,
               });
             }
           }
@@ -805,7 +856,7 @@ export default {
         type: 'post',
         url: 'http://szzx.api51.cn/szzx/trend/?prod_code=' + myProdCode.prodCode,
         dataType: 'json',
-        async: false,
+        async: true,
         success: function (recvData) {
           self.RecvMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
         }
@@ -834,7 +885,7 @@ export default {
         dataType: 'json',
         data: JSON.stringify(params),
         contentType: 'application/json;charset=utf-8',
-        async: false,
+        async: true,
         success: function (recvData) {
           self.RecvHistoryData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option)
         },
@@ -851,14 +902,18 @@ export default {
       var self = this;
       var symbol = data.Request.Data.symbol; //股票代码
       var name = data.Name;
+      var params = {
+        periodType: 60,
+        prodCode: myProdCode.prodCode,
+        tickCount: 10000
+      }
       $.ajax({
-        type: 'GET',
-        url:
-          'http://szzx.api51.cn/szzx/kline/?prod_code=' +
-          myProdCode.prodCode +
-          '&period_type=60&tick_count=1000',
+        type: 'POST',
+        url: '/api' + '/quotationService/quotation/getOneMinuteKLineHistory',
         dataType: 'json',
-        async: false,
+        data: JSON.stringify(params),
+        contentType: 'application/json;charset=utf-8',
+        async: true,
         success: function (recvData) {
           self.RecvMinuteRealtimeData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
         },
@@ -870,19 +925,29 @@ export default {
     },
     // 1分钟k线 全量历史 数据的请求
     ReqeustHistoryMinuteData (data, callback, option) {
-      console.log(data);
       data.PreventDefault = true;  //禁止hqchart调用内置api数据
       var self = this;
       var symbol = data.Request.Data.symbol; //股票代码
       var name = data.Name;
+      var params = {
+        periodType: 60,
+        prodCode: myProdCode.prodCode,
+        tickCount: 1000
+      }
       $.ajax({
-        type: 'GET',
-        url:
-          'http://szzx.api51.cn/szzx/kline/?prod_code=' +
-          myProdCode.prodCode +
-          '&period_type=60&tick_count=10000',
+        type: 'POST',
+        url: '/api' + '/quotationService/quotation/getOneMinuteKLineHistory',
         dataType: 'json',
-        async: false,
+        data: JSON.stringify(params),
+        contentType: 'application/json;charset=utf-8',
+        async: true,
+        // type: 'GET',
+        // url:
+        //   'http://szzx.api51.cn/szzx/kline/?prod_code=' +
+        //   myProdCode.prodCode +
+        //   '&period_type=60&tick_count=1000',
+        // dataType: 'json',
+        // async: true,
         success: function (recvData) {
           self.RecvHistoryMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
         },
@@ -1037,12 +1102,14 @@ export default {
     // 1分钟周期  历史数据 转换为  hqchart  数据格式
     JsonToHQChartHistoryMinuteData (recvData) {
       var klineData = [];
-      console.log(recvData);
-      var obj = recvData.data.candle;
+      // 格式化数据
+      var data = JSON.parse(recvData.data)
+      var obj = data.data.candle;
+      // var obj = recvData.data.candle;
       for (var key in obj) {
         var lines = obj[key].lines
         $.each(lines, function (index, myobj) {
-          var time = new Date(myobj[0] * 1000);
+          var time = new Date(myobj[8] * 1000);
           var mydate =
             time.getFullYear() +
             '' +
@@ -1053,7 +1120,6 @@ export default {
             (time.getDate() < 10
               ? '0' + time.getDate()
               : time.getDate());
-          // console.log(mydate); 2020091
           //时间
           var mytime =
             time.getHours() +
@@ -1065,14 +1131,24 @@ export default {
           klineData.push([
             parseFloat(mydate), // 日期
             0,
-            parseFloat(myobj[1]), //开
-            parseFloat(myobj[3]), //高
-            parseFloat(myobj[4]), //低
-            parseFloat(myobj[2]), //收
-            parseFloat(myobj[5]), // 这里显示的是 量
-            parseFloat(myobj[6]), // 这里显示的是 额
+            parseFloat(myobj[0]), //开
+            parseFloat(myobj[2]), //高
+            parseFloat(myobj[3]), //低
+            parseFloat(myobj[1]), //收
+            parseFloat(myobj[6]), // 这里显示的是 量
+            parseFloat(myobj[7]), // 这里显示的是 额
             parseInt(mytime), //时间
             '',
+            // parseFloat(mydate), // 日期
+            // 0,
+            // parseFloat(myobj[1]), //开
+            // parseFloat(myobj[3]), //高
+            // parseFloat(myobj[4]), //低
+            // parseFloat(myobj[2]), //收
+            // parseFloat(myobj[5]), // 这里显示的是 量
+            // parseFloat(myobj[6]), // 这里显示的是 额
+            // parseInt(mytime), //时间
+            // '',
           ]);
         })
       }
@@ -1795,7 +1871,7 @@ ol {
   line-height: 45px;
   border-bottom: 1px solid #ececec;
   border-top: 1px solid #ececec;
-  padding: 0 4%;
+  padding: 0 0%;
   font-size: 1.3rem;
   display: flex;
   flex-direction: row;

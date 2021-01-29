@@ -155,7 +155,7 @@ body {
     width: 90%;
     height: 60px;
     // border-top: 1px solid #ececec;
-    border-bottom: 1px solid #ececec;
+    // border-bottom: 1px solid #ececec;
     > ul {
       display: flex;
       width: 100%;

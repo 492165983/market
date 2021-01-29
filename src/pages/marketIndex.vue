@@ -46,6 +46,7 @@
 </template>
 
 <script>
+
 import Tools from "../services/tools"
 import TabList from "../components/tabList"
 import $ from 'jquery'
@@ -60,12 +61,19 @@ import 'hqchart/src/jscommon/umychart.resource/font/iconfont.css'
 import '../../node_modules/hqchart/src/jscommon/umychart.resource/js/webfont'
 var JSCommon = HQChart.Chart;
 var JSCommonStock = HQChart.Stock;
-var myProdCode = window.myProdCode;
+// var myProdCode = window.myProdCode;
 var url = window.location.href; //获取地址栏中的  url      
 var cs = url.split('?prodCode=')[1]; //获取url 中 "?" 之后的参数字符串
-window.myProdCode = {
-  prodCode: cs
+if (cs === '000001.BYSJ') {
+  window.myProdCodeBYSJ = {
+    prodCode: cs
+  }
+} else {
+  window.myProdCode = {
+    prodCode: cs
+  }
 }
+
 
 
 
@@ -120,7 +128,7 @@ DefaultData.GetMinuteOption = function (symbol) {
     Windows: [
     ], //窗口指标
     IsAutoUpate: true, //是自动更新数据
-    Info: ["大盘异动"],
+    // Info: ["大盘异动"],
     IsShowRightMenu: false, //右键菜单
     IsShowCorssCursorInfo: false, //是否显示十字光标的刻度信息
     DayCount: 1,
@@ -191,7 +199,8 @@ DefaultData.GetKlineOption = function (symbol) {
       MaxReqeustDataCount: 1000, //日线数据最近1000天
       MaxRequestMinuteDayCount: 15,    //分钟数据最近15天
       PageSize: 50, //一屏显示多少数据
-      IsShowTooltip: false //是否显示K线提示信息
+      IsShowTooltip: false, //是否显示K线提示信息
+      DrawType: 3 // 涨空心柱子
     },
 
     KLineTitle: //标题设置
@@ -273,14 +282,15 @@ export default {
   data () {
     return {
       cs: null,    //股票代码默认为空
-      Buy: [],
-      Sell: [],
       current: 1,//当前的k线指标 如 MACD等
       TabKlineIndex: 1,  //当前的k线指标 如 MACD等
-      preclose_px: 0,    // 昨收价
+      preclose_px: 0,    // 昨收价(非资信)   
       hqChart: {},   // 分时线的
+      hqChart1: {},   // 分时图 资信指数的
       hqChartKline: {},  //k线的
+      hqChartKline3: {},  //k线的  大盘资信指数
       hqChartKline1: {},  //1分钟k线的
+      hqChartKline2: {},  //1分钟k线的  大盘资信指数
       hqChartBS: {}, // BS 数据
       PhoneRightShow: false,
       ExchangeInfoTShow: false,
@@ -479,9 +489,14 @@ export default {
       if (this.Minute.JSChart) return;
       this.Minute.Option.Symbol = this.Symbol;
       let chart = JSCommon.JSChart.Init(this.$refs.minute);
+      //必须放在setoption前面修改指数后缀名
+      HQChart.Chart.MARKET_SUFFIX_NAME.SHSZ_C_Index = "000001.BYSJ"; //注意后缀大写 大写 大写!!!!!
       // 以下主要是设置背景颜色
       var blackStyle = JSCommon.HQChartStyle.GetStyleConfig(JSCommon.STYLE_TYPE_ID.BLACK_ID);
       blackStyle.FrameTitleBGColor = "#F7F7F7";
+      blackStyle.UnchagneBarColor = "#DC143C";   //设置平盘颜色
+      // blackStyle.FrameSplitPen = "#ECECEC";  //分割线
+      // blackStyle.FrameBorderPen = '#ECECEC';  // 边框
       JSCommon.JSChart.SetStyle(blackStyle);
       this.$refs.minute.style.backgroundColor = '#ffffff';
       // 以上主要是设置背景颜色
@@ -500,7 +515,8 @@ export default {
     },
     //第三方  分时数据 （自己的数据）
     MinuteNetworkFilter (data, callback) {
-      console.log('[MinuteNetworkFilter] data', data, callback);
+      // console.log(this);
+      // console.log('[MinuteNetworkFilter] data', data, callback);
       switch (data.Name) {
         case 'MinuteChartContainer::RequestMinuteData':   //分钟全量数据下载
           this.RequestMinuteData(data, callback, { PageSize: 500 });
@@ -541,7 +557,7 @@ export default {
     // BS 数据的 请求
     ExecuteScript (data, callback, option) {
       data.PreventDefault = true;
-      console.log(data);
+      // console.log(data);
       // console.log(this);
       var klineData = [];
       var symbol = data.Request.Data.symbol; //股票代码
@@ -549,57 +565,61 @@ export default {
       setTimeout(() => {
         var hqchart = data.HQChart;
         var kData = hqchart.ChartPaint[0].Data;
-
         var myIcon = [];
-        var paramsSell = {
-          pageNum: 1,
-          pageSize: 1000,
-          prodCode: myProdCode.prodCode,
-        };
-        $.ajax({
-          type: 'POST',
-          url: '/api' + '/quotationService/quotation/getAndroidKlineDayPage',
-          dataType: 'json',
-          data: JSON.stringify(paramsSell),
-          contentType: 'application/json;charset=utf-8',
-          async: false,
-          success: function (recvData) {
-            $.each(recvData.data.records, function (index, myobj) {
-              var sp1 = myobj['Date']; //日期
-              var sp = sp1.split('/');
-              var mydate = sp[0];
-              if ((sp[1] + '').length == 1) {
-                mydate = mydate + '0' + sp[1];
-              } else {
-                mydate = mydate + sp[1];
-              }
-              if ((sp[2] + '').length == 1) {
-                mydate = mydate + '0' + sp[2];
-              } else {
-                mydate = mydate + sp[2];
-              }
-              var myClose = myobj['Close'];
-              if (Boolean(myobj['isBuyPoint']) === true) {
-                myIcon.push({
-                  Date: parseInt(mydate),
-                  Value: myClose * 0.88,
-                  Symbol: '\ue64a',
-                  Color: 'rgb(240,0,0)',
-                  Baseline: 2,
-                });
-              } else if (Boolean(myobj['isSellPoint']) === true) {
-                myIcon.push({
-                  Date: parseInt(mydate),
-                  Value: myClose * 1.15,
-                  Symbol: '\ue64b',
-                  Color: 'rgb(60,179,113)',
-                  Baseline: 1,
-                });
-              }
-            });
+        if (window.myProdCodeBYSJ === undefined) {
+          var paramsSell = {
+            pageNum: 1,
+            pageSize: 1000,
+            prodCode: myProdCode.prodCode,
+          };
+          $.ajax({
+            type: 'POST',
+            url: '/api' + '/quotationService/quotation/getAndroidKlineDayPage',
+            dataType: 'json',
+            data: JSON.stringify(paramsSell),
+            contentType: 'application/json;charset=utf-8',
+            async: false,
+            success: function (recvData) {
+              $.each(recvData.data.records, function (index, myobj) {
+                var sp1 = myobj['Date']; //日期
+                var sp = sp1.split('/');
+                var mydate = sp[0];
+                if ((sp[1] + '').length == 1) {
+                  mydate = mydate + '0' + sp[1];
+                } else {
+                  mydate = mydate + sp[1];
+                }
+                if ((sp[2] + '').length == 1) {
+                  mydate = mydate + '0' + sp[2];
+                } else {
+                  mydate = mydate + sp[2];
+                }
+                var myClose = myobj['Close'];
+                if (Boolean(myobj['isBuyPoint']) === true) {
+                  myIcon.push({
+                    Date: parseInt(mydate),
+                    Value: myClose * 0.88,
+                    Symbol: '\ue64a',
+                    Color: 'rgb(240,0,0)',
+                    Baseline: 2,
+                  });
+                } else if (Boolean(myobj['isSellPoint']) === true) {
+                  myIcon.push({
+                    Date: parseInt(mydate),
+                    Value: myClose * 1.15,
+                    Symbol: '\ue64b',
+                    Color: 'rgb(60,179,113)',
+                    Baseline: 1,
+                  });
+                }
+              });
 
-          }
-        });
+            }
+          });
+        } else if (window.myProdCodeBYSJ !== undefined) {
+          // console.log('进来自己的大盘BS了但没有买卖点');
+        }
+
         var line2 = {
           name: 'MULTI_SVGICON',
           type: 1,
@@ -631,15 +651,9 @@ export default {
     RequestMinuteData (data, callback, option) {
       data.PreventDefault = true;  //禁止hqchart调用内置api数据
       var self = this;
-
       var symbol = data.Request.Data.symbol; //股票代码
       var name = data.Name;
 
-
-      // 买
-      var Buy = [];
-      // 卖
-      var Sell = [];
       // 昨日收盘价
       var preclose_px = []
       // 股票代码
@@ -647,6 +661,7 @@ export default {
       // 股票名称
       var prodName = [];
 
+      // 获取单个股票信息的头
       $.ajax({
         url: '/api' + '/quotationService/quotation/getRedisStock',
         contentType: 'application/json',
@@ -655,30 +670,51 @@ export default {
         dataType: "json",
         async: true,
         success: (recvData) => {
-          // console.log(recvData);
           this.preclose_px = recvData.data.preclose_px;
-          // myPrice.push(recvData.data.preclose_px);
           prodCode.push(recvData.data.prod_code);
           prodName.push(recvData.data.prod_name);
         },
-        error: () => {
-          // console.log('错误');
-        }
+        error: () => { }
       });
-
-      //请求分时图数据
-      $.ajax({
-        type: 'post',
-        url: 'http://szzx.api51.cn/szzx/trend/?prod_code=' + myProdCode.prodCode,
-        dataType: 'json',
-        async: false,
-        success: function (recvData) {
-          self.RecvMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
+      if (myProdCode.prodCode !== '000001.BYSJ') {
+        //请求分时图数据
+        $.ajax({
+          type: 'post',
+          url: 'http://szzx.api51.cn/szzx/trend/?prod_code=' + myProdCode.prodCode,
+          dataType: 'json',
+          async: false,
+          success: function (recvData) {
+            self.RecvMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
+          }
+        })
+      } else if (myProdCode.prodCode === '000001.BYSJ') {
+        // // 请求分时图数据 资信大盘BYSJ
+        var BYSJMinute = function () {
+          $.ajax({
+            type: "post",
+            url: '/api' + '/quotationService/hqchar/queryMinuteKline',
+            dataType: 'json',
+            contentType: 'application/json;charset=utf-8',
+            data: JSON.stringify(myProdCode),
+            async: false,
+            success: function (recvData) {
+              self.RecvMinuteZiXinData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option)
+            },
+            error: () => { }
+          })
         }
-      })
+        var BYSJStart = window.setTimeout(BYSJMinute, 1000);
+      }
+
     },
     RecvMinuteData (recvData, callback, stockData, option) {
       this.JsonToHQChartMinuteHistoryData(recvData);
+      console.log(this.hqChart);
+      callback(this.hqChart);
+    },
+    // 分时图资信指数 接收
+    RecvMinuteZiXinData (recvData, callback, stockData, option) {
+      this.JsonToHQChartMinuteHistoryZiXinData(recvData);
       callback(this.hqChart);
     },
     //日线周期  历史 数据的请求
@@ -687,34 +723,42 @@ export default {
       var self = this;
       var symbol = data.Request.Data.symbol; //股票代码
       var name = data.Name;
-      // 大盘日线自己数据   太少只到8月14号
-      // var params = {
-      //   pageNum: 1,
-      //   pageSize: 1000,
-      //   prodCode: myProdCode.prodCode,
-      // };
-      // $.ajax({
-      //   type: 'POST',
-      //   url: '/api' + '/quotationService/quotation/getAndroidKlineDayPage',
-      //   dataType: 'json',
-      //   data: JSON.stringify(params),
-      //   contentType: 'application/json;charset=utf-8',
-      //   async: false,
-      //   success: function (recvData) {
-      //     self.RecvHistoryData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option)
-      //   },
-      // });
-
-      // 大盘日线数据  到今日数据
-      $.ajax({
-        type: 'GET',
-        url: 'http://szzx.api51.cn/szzx/kline/?prod_code=' + myProdCode.prodCode + '&period_type=86400&tick_count=1000',
-        dataType: 'json',
-        async: false,
-        success: function (recvData) {
-          self.RecvHistoryData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
+      if (window.myProdCodeBYSJ === undefined) {
+        $.ajax({
+          type: 'GET',
+          url: 'http://szzx.api51.cn/szzx/kline/?prod_code=' + myProdCode.prodCode + '&period_type=86400&tick_count=1000',
+          dataType: 'json',
+          async: false,
+          success: function (recvData) {
+            self.RecvHistoryData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
+          }
+        })
+      } else if (window.myProdCodeBYSJ !== undefined) {
+        var paramsDay = {
+          prodCode: myProdCodeBYSJ.prodCode,
+          timeType: '1day',
+          pageNum: 1,
+          pageSize: 1000
         }
-      })
+        $.ajax({
+          type: "POST",
+          url: '/api' + '/quotationService/hqchar/queryHistoryKline',
+          dataType: 'json',
+          contentType: 'application/json;charset=utf-8',
+          data: JSON.stringify(paramsDay),
+          async: false,
+          success: function (recvData) {
+            // console.log(recvData);
+            self.RecvHistoryZiXinData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
+          }
+        })
+
+      }
+
+    },
+    RecvHistoryZiXinData (recvData, callback, stockData) {
+      this.JsonToHQChartHistoryZiXinData(recvData);
+      callback(this.hqChartKline3);
     },
     RecvHistoryData (recvData, callback, stockData) {
       this.JsonToHQChartHistoryData(recvData);
@@ -743,26 +787,57 @@ export default {
       this.JsonToHQChartHistoryMinuteData(recvData);
       callback(this.hqChartKline1);
     },
-    // 1分钟k线 全量历史 数据的请求
+    // 1分钟k线全量历史数据的请求
     ReqeustHistoryMinuteData (data, callback, option) {
-      console.log(data);
+      // console.log(data);
       data.PreventDefault = true;  //禁止hqchart调用内置api数据
       var self = this;
       var symbol = data.Request.Data.symbol; //股票代码
       var name = data.Name;
-      $.ajax({
-        type: 'GET',
-        url:
-          'http://szzx.api51.cn/szzx/kline/?prod_code=' +
-          myProdCode.prodCode +
-          '&period_type=60&tick_count=10000',
-        dataType: 'json',
-        async: false,
-        success: function (recvData) {
-          self.RecvHistoryMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
-        },
-      });
+      // console.log(window.myProdCode);
+      console.log(window.myProdCodeBYSJ);
+      if (window.myProdCodeBYSJ === undefined) {
+        $.ajax({
+          type: 'GET',
+          url:
+            'http://szzx.api51.cn/szzx/kline/?prod_code=' +
+            myProdCode.prodCode +
+            '&period_type=60&tick_count=1000',
+          dataType: 'json',
+          async: false,
+          success: function (recvData) {
+            self.RecvHistoryMinuteData(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option);
+          },
+        });
+      } else if (window.myProdCodeBYSJ !== undefined) {
+        console.log('进来自己的一分钟大盘数据了');
+        var paramsBIg = {
+          prodCode: myProdCodeBYSJ.prodCode,
+          timeType: 1,
+          pageNum: 1,
+          pageSize: 10000
+        }
+        $.ajax({
+          type: "POST",
+          url: '/api' + '/quotationService/hqchar/queryHistoryKline',
+          // url: '/api' + '/quotationService/hqchar/queryHistoryKline/?prodCode=' + myProdCodeBYSJ.prodCode + '&timeType=1day',
+          dataType: 'json',
+          contentType: 'application/json;charset=utf-8',
+          data: JSON.stringify(paramsBIg),
+          async: false,
+          success: function (recvData) {
+            self.RecvHistoryMinuteDataZixin(recvData, callback, { Name: name, Symbol: symbol, Chart: data.Self }, option)
+          }
+        })
+      }
+
     },
+    // 1分钟自己大盘 资信指数 全量历史数据的接收
+    RecvHistoryMinuteDataZixin (recvData, callback, stockData) {
+      this.JsonToHQChartHistoryMinuteZiXinData(recvData);
+      callback(this.hqChartKline2);
+    },
+    // 1分钟全量历史数据的接收
     RecvHistoryMinuteData (recvData, callback, stockData) {
       this.JsonToHQChartHistoryMinuteData(recvData);
       callback(this.hqChartKline1);
@@ -828,7 +903,6 @@ export default {
             amount: myobj[7],
             increase: myobj[8],
             risefall: myobj[9],
-            // lead: -1 //大盘 指数领先
           });
         });
         klineData.push([20200829, 11.32, 11.3, 11.3, 11.3, 11.3, 363806, 4111008, 825,])
@@ -862,7 +936,87 @@ export default {
         code: 0,
         servertime: '2020-08-18 21:06:56',
       };
-      console.log(this.hqChart);
+      return klineData;
+    },
+    //资信分时图指数  分时图 （历史/最新）数据转化为hqchart数据格式
+    JsonToHQChartMinuteHistoryZiXinData (recvData) {
+      var obj = recvData.data;
+      //   //昨日收盘价
+      var preclose_px = [];
+      var yClose = null;
+      var klineData = [];
+      var minute = [];
+
+
+      var myDate; //日期
+      var myTime; //时间
+      var Open = []; //开盘价
+      var High = []; // 最高价
+      var Low = []; //最低价
+      var Close = []; // 收盘价
+      var Volume = []; // 成交量
+      var Amount = []; // 成交额
+      for (let key in obj) {
+        var lines = obj[key];
+        this.preclose_px = obj[key].preClosePx;
+      }
+      $.each(obj, function (index, myobj) {
+        Open.push(myobj['openPx']); //开盘价
+        Low.push(myobj['lowPx']); //最低价
+        High.push(myobj['highPx']); // 最高价
+        Close.push(myobj['closePx']); // 收盘价
+        Amount.push(myobj['turnoverValue']); // 成交额
+        Volume.push(myobj['turnoverVolume']); //成交量
+
+        var sp = myobj['tickAt'];
+        var sp1 = sp.split('T');
+        var mydate1 = sp1[0].split('-');
+        myDate = mydate1[0] + mydate1[1] + mydate1[2];   //日期
+        var myTime1 = sp1[1].split(':');
+        myTime = myTime1[0] + myTime1[1];   //时间
+        minute.push({
+          time: parseInt(myTime),
+          avprice: myobj['avgPx'],
+          price: myobj['closePx'],
+          open: myobj['openPx'],
+          high: myobj['highPx'],
+          low: myobj['lowPx'],
+          vol: myobj['turnoverVolume'] * 100,
+          amount: myobj['turnoverValue'],
+          increase: myobj['pxChange'],
+          risefall: myobj['pxChangeRate'],
+        });
+
+      })
+      klineData.push([20200829, 11.32, 11.3, 11.3, 11.3, 11.3, 363806, 4111008, 825,]);
+      this.hqChart = {
+        stock: [
+          {
+            time: 1,
+            date: myDate,
+            price: Close,
+            open: Open,
+            yclose: this.preclose_px,   //收盘价
+            high: High,
+            low: Low,
+            vol: Volume,
+            amount: Amount,
+            symbol: myProdCode.prodCode,
+            name: '资信指数',
+            minute: minute,
+          }
+        ],
+        start: 0,
+        end: 20,
+        data: klineData,
+        count: 1,
+        ticket: 0,
+        version: 'HQ.Stock 2.0',
+        message:
+          '{"加载版块":0.0081,"查询mongo":5.7040000000000006,"封装数据":0.231,"排序":0.0072000000000000007,"分页":0.0089}',
+        code: 0,
+        servertime: '2020-08-18 21:06:56',
+      };
       return klineData;
     },
     //日线周期  历史数据转化为hqchart数据格式
@@ -883,7 +1037,6 @@ export default {
             (time.getDate() < 10
               ? '0' + time.getDate()
               : time.getDate());
-          // console.log(mydate); 2020091
           //时间
           var mytime =
             time.getHours() +
@@ -911,6 +1064,45 @@ export default {
         data: klineData,
         symbol: '000001.ss',
         name: '上证指数',
+        start: -1,
+        end: 0,
+        count: 4916,
+        ticket: 172,
+        version: '2.0',
+        message: null,
+        code: 0,
+        servertime: '2020-08-19 20:45:15',
+      };
+      return klineData;
+    },
+    // //日线周期资信指数自己的大盘  历史数据转化为hqchart数据格式
+    JsonToHQChartHistoryZiXinData (recvData) {
+      var klineData = [];
+      $.each(recvData.data.records, function (index, myobj) {
+        var sp = myobj['tickAt'];
+        var sp1 = sp.split('T');
+        var mydate1 = sp1[0].split('-');
+        var myDate = mydate1[0] + mydate1[1] + mydate1[2];   //日期
+        var myTime1 = sp1[1].split(':');
+        var myTime = myTime1[0] + myTime1[1];   //时间
+
+        klineData.push([
+          parseFloat(myDate), //日期
+          0,
+          parseFloat(myobj['openPx']), //开
+          parseFloat(myobj['highPx']), //高
+          parseFloat(myobj['lowPx']), //低
+          parseFloat(myobj['closePx']), //收
+          parseFloat(myobj['turnoverVolume']), // 这里显示的是 量
+          parseFloat(myobj['turnoverValue']), // 这里显示的是 额
+          parseInt(myTime), //时间
+          '',
+        ])
+      });
+      this.hqChartKline3 = {
+        data: klineData,
+        symbol: '000001.BYSJ',
+        name: '资信指数',
         start: -1,
         end: 0,
         count: 4916,
@@ -980,7 +1172,47 @@ export default {
       };
       return klineData;
     },
-    //日线最新数据转化为hqchart数据格式
+    // 1分钟周期 大盘资信指数 历史数据 转换为  hqchart  数据格式
+    JsonToHQChartHistoryMinuteZiXinData (recvData) {
+      var klineData = [];
+      $.each(recvData.data.records, function (index, myobj) {
+        var sp = myobj['tickAt'];
+        var sp1 = sp.split('T');
+        var mydate1 = sp1[0].split('-');
+        var myDate = mydate1[0] + mydate1[1] + mydate1[2];   //日期
+        var myTime1 = sp1[1].split(':');
+        var myTime = myTime1[0] + myTime1[1];   //时间
+
+        klineData.push([
+          parseFloat(myDate), //日期
+          0,
+          parseFloat(myobj['openPx']), //开
+          parseFloat(myobj['highPx']), //高
+          parseFloat(myobj['lowPx']), //低
+          parseFloat(myobj['closePx']), //收
+          parseFloat(myobj['turnoverVolume']), // 这里显示的是 量
+          parseFloat(myobj['turnoverValue']), // 这里显示的是 额
+          parseInt(myTime), //时间
+          '',
+        ])
+      });
+
+      this.hqChartKline2 = {
+        data: klineData,
+        symbol: '000001.BYSJ',
+        name: '资信指数',
+        start: -1,
+        end: 0,
+        count: 4916,
+        ticket: 172,
+        version: '2.0',
+        message: null,
+        code: 0,
+        servertime: '2020-08-19 20:45:15',
+      };
+      return klineData;
+    },
+    //日线最新数据转化为hqchart数据格式  此处例子没用到
     JsonToHQChartRealtimeData (recvData) {
       var stockData = {};
       var data = recvData.data.series;
@@ -1004,10 +1236,8 @@ export default {
     },
 
 
-
-
     UpdateTitle (event, data, obj) {
-      // console.log('[UpdateTitle]  data',data)
+      // console.log('[UpdateTitle]  data', data)
       var objNew = {
         Date: { Text: '' },
         Open: { Text: '', Color: '' },
@@ -1046,7 +1276,7 @@ export default {
       }
     },
     UpdateMinuteTitle (event, data, obj) {
-      // console.log('[UpdateMinuteTitle]  data',data.Draw.Time,data)
+      // console.log('[UpdateMinuteTitle]  data', data.Draw.Time, data)
       var objNew = {
         Time: { Text: '' },
         Open: { Text: '', Color: '' },
@@ -1122,7 +1352,6 @@ export default {
     GetWindowID (val) {
       this.FrameID = val;
     },
-
 
     IsSHSZIndex: function () {
       return JSCommon.MARKET_SUFFIX_NAME.IsSHSZIndex(this.Symbol);
@@ -1471,7 +1700,7 @@ ol {
   line-height: 60px;
   text-align: left;
   font-weight: 600;
-  border-bottom: 1px solid #ececec;
+  // border-bottom: 1px solid #ececec;
   color: #333333;
 }
 .tooltip-span {
@@ -1674,7 +1903,7 @@ ol {
   line-height: 45px;
   border-bottom: 1px solid #ececec;
   border-top: 1px solid #ececec;
-  padding: 0 4%;
+  padding: 0 0%;
   font-size: 1.3rem;
   display: flex;
   flex-direction: row;
